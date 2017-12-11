@@ -3,20 +3,32 @@ using System.Linq;
 using DocumentFormat.OpenXml.Spreadsheet;
 using DocumentFormat.OpenXml.Packaging;
 using openXmlSpreadsheet = DocumentFormat.OpenXml.Drawing.Spreadsheet;
+using System.IO;
 
 namespace OpenXmlTest
 {
-    public class ExampleClass
+    /// <summary> 
+    /// Performs a check to find out if given chart id exists in given file
+    /// </summary>
+    public class ExampleClass : IDisposable
     {
         public delegate void ReportProgressDel(string message);
         public event ReportProgressDel ReportProgress;
 
+        private Stream _docStream;
+        private SpreadsheetDocument _openXmlDoc;
         private WorkbookPart _wkb;
         private Worksheet _wks;
         private readonly string _filePath;
         private readonly int _sheetId;
         private readonly string _chartId;
 
+        /// <summary>
+        /// Opens the given file as a stream and checks if given sheet and chart ID exists
+        /// </summary>
+        /// <param name="filePath">a file to be checked (can be opened by Excel already)</param>
+        /// <param name="sheetId">the ID of sheet where to look for a chart</param>
+        /// <param name="chartId">the chart ID to look for on given sheet</param>
         public ExampleClass(string filePath, int sheetId, string chartId)
         {
             if (string.IsNullOrWhiteSpace(filePath) || sheetId <= 0)
@@ -34,10 +46,12 @@ namespace OpenXmlTest
         /// <returns></returns>
         private bool OpenFile()
         {
+            
             try
             {
-                var file = SpreadsheetDocument.Open(_filePath, false);
-                _wkb = file.WorkbookPart;
+                _docStream = new FileStream(_filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);                    
+                _openXmlDoc = SpreadsheetDocument.Open(_docStream, false);
+                _wkb = _openXmlDoc.WorkbookPart;
                 ReportProgress?.Invoke($"File opened");
                 return true;
             }
@@ -45,8 +59,14 @@ namespace OpenXmlTest
             {
                 ReportProgress?.Invoke($"File couldn't be opened!\n{ex.Message}");
                 return false;
-            }            
+            }
         }
+
+        /// <summary>
+        /// Applies for Office 2010 and higher 
+        /// True if the chart check should be considered just for a numeric ID, false for GUID check
+        /// </summary>
+        public bool SimpleChartID { get; set; }
 
         /// <summary> Returns true if sheet with given ID exists </summary>
         public bool SheetExists
@@ -91,7 +111,9 @@ namespace OpenXmlTest
         }
 
         /// <summary>
-        /// 
+        /// Check if given chart ID exists
+        /// For Office 2007 it simply checks the given ID which is a number
+        /// For Office 2010 it check the creation GUID        
         /// </summary>        
         /// <returns>True if a chart exists on given sheet otherwise false </returns>
         private bool CheckChartExists()
@@ -132,9 +154,17 @@ namespace OpenXmlTest
                 try
                 {
                     dynamic frameProps2010 = graphicFrame.Descendants<DocumentFormat.OpenXml.Drawing.NonVisualDrawingPropertiesExtension>().First();
-                    var creationElement = frameProps2010.FirstChild.ExtendedAttributes;
-                    string guid = creationElement[0].Value;                    
-                    if (_chartId.Equals(guid)) return true;
+
+                    if (SimpleChartID)
+                    {
+                        if (_chartId.Equals((string)frameProps.Id)) return true;
+                    }
+                    else
+                    {
+                        var creationElement = frameProps2010.FirstChild.ExtendedAttributes;
+                        string guid = creationElement[0].Value;
+                        if (_chartId.Equals(guid)) return true;
+                    }
                 }
                 catch (Exception)
                 {                    
@@ -144,6 +174,11 @@ namespace OpenXmlTest
             
             return false;
         }
-        
+
+        public void Dispose()
+        {
+            _openXmlDoc?.Close();
+            _docStream?.Close();            
+        }
     }
 }

@@ -24,10 +24,12 @@ namespace OpenXmlTest
 
             var fileManager = new ExampleClass(filePath, sheetId, chartId);
             fileManager.ReportProgress += FileManager_ReportProgress;
+            fileManager.SimpleChartID = true;
 
             var retVal = fileManager.ChartExists;
             Console.WriteLine($"The chart was {(retVal ? "FOUND" : "NOT FOUND")}");
             Console.ReadLine();
+            fileManager.Dispose();            
         }
 
         private static void FileManager_ReportProgress(string message)
